@@ -12,10 +12,16 @@ def main():
         sys.stdout.flush()
         # Wait for user input
         user_command = input()
-        if user_command == "exit 0":
-            break
-        print(f"{user_command}: command not found")
-            
+
+        args = user_command.split(" ")
+        if args[0] == "exit":
+            if args[1] == "0":
+                sys.exit(0)
+        elif args[0] == "echo":
+            print(user_command[len("echo "):])
+        else:
+            print(f"{user_command}: command not found")
+        
         
             
 
