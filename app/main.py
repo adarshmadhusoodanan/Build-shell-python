@@ -22,7 +22,7 @@ def handle_input(user_command):
                     break
             else:
                 second_word = user_command.split(" ")[1]
-                sys.stdout.write(f"{second_word} not found\n")
+                sys.stdout.write(f"{second_word}: not found\n")
     elif user_command == "exit 0":
         return False
     elif "echo" == user_command.split(" ")[0]:
