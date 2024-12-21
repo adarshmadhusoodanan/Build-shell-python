@@ -1,10 +1,41 @@
 import sys
+import os
+
+builtin = ["echo","type", "exit"]
+
+
+def handle_input(user_command):
+
+    if "type" == user_command.split(" ")[0]:
+        if user_command.split(" ")[1] in builtin:
+            second_word = user_command.split(" ")[1]
+            sys.stdout.write(f"{second_word} is a shell builtin\n")
+        else:
+            # sys.stdout.write(f"{user_command.split(" ")[1]} not found\n")
+            paths = os.getenv("PATH").split(":")
+
+            for path in paths:
+                second_word = user_command.split(" ")[1]
+                if os.path.exists(f"{path}/{second_word}"):
+                    second_word = user_command.split(" ")[1]
+                    sys.stdout.write(f"{second_word} is {path}/{second_word}\n")
+                    break
+            else:
+                second_word = user_command.split(" ")[1]
+                sys.stdout.write(f"{second_word} not found\n")
+    elif user_command == "exit 0":
+        return False
+    elif "echo" == user_command.split(" ")[0]:
+        invalid = user_command[len("echo "):]
+        sys.stdout.write(f"{invalid}\n")
+    else:
+        sys.stderr.write(f"{user_command}: command not found\n")
+        sys.stdout.flush()
+
 
 
 def main():
-    # Uncomment this block to pass the first stage
-
-
+    # Uncomment this block to pass the first stag
     
 
     while True:
@@ -12,25 +43,10 @@ def main():
         sys.stdout.flush()
         # Wait for user input
         user_command = input()
+        handle_response = handle_input(user_command)
 
-        args = user_command.split(" ")
-        if args[0] == "exit":
-            if args[1] == "0":
-                sys.exit(0)
-        elif args[0] == "type":
-            if args[1] == "echo":
-                print("echo is a shell builtin")
-            elif args[1] == "exit":
-                print("exit is a shell builtin")
-            elif args[1] == "type":
-                print("type is a shell builtin")
-            else:
-                invalid = user_command[len("type "):]
-                print(f"{invalid}: not found")
-        elif args[0] == "echo":
-            print(user_command[len("echo "):])
-        else:
-            print(f"{user_command}: command not found")
+        if handle_response == False:
+            break
         
         
             
