@@ -1,55 +1,53 @@
-import sys
 import os
+import subprocess
+import sys
+from typing import Optional
 
-
-def find_path(param):
-    path = os.environ['PATH']
+def locate_executable(command) -> Optional[str]:
+    path = os.environ.get("PATH", "")
     for directory in path.split(":"):
-        for (dirpath, dirnames, filenames) in os.walk(directory):
-            if param in filenames:
-                return f"{dirpath}/{param}"
-    return None
+        file_path = os.path.join(directory, command)
+        if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
+            return file_path
 
+def handle_exit(args):
+    sys.exit(int(args[0]) if args else 0)
+
+def handle_echo(args):
+    print(" ".join(args))
+
+def handle_type(args):
+    if args[0] in builtins:
+        print(f"{args[0]} is a shell builtin")
+    else:
+        executable = locate_executable(args[0])
+        if executable:
+            print(f"{args[0]} is {executable}")
+        else:
+            print(f"{args[0]} not found")
+
+builtins = {
+    "exit": handle_exit,
+    "echo": handle_echo,
+    "type": handle_type,
+}
 
 def main():
     while True:
         sys.stdout.write("$ ")
         sys.stdout.flush()
+        command, *args = input().split(" ")
 
-        # Wait for user input
-        user_command = input().strip()
-        if not user_command:
+        if command in builtins:
+            builtins[command](args)
             continue
-
-        # Split the command into parts
-        command_parts = user_command.split(" ")
-
-        # Check for specific commands
-        if command_parts[0] == "exit" and len(command_parts) > 1 and command_parts[1] == "0":
-            exit(0)
-        elif command_parts[0] == "echo":
-            print(" ".join(command_parts[1:]))
-        elif command_parts[0] == "type":
-            if len(command_parts) > 1:
-                cmd = command_parts[1]
-                if cmd in ["echo", "type", "exit"]:
-                    print(f"{cmd} is a shell builtin")
-                else:
-                    location = find_path(cmd)
-                    if location:
-                        print(f"{cmd} is {location}")
-                    else:
-                        print(f"{cmd} not found")
-            else:
-                print("type: missing argument")
         else:
-            # Default behavior for unknown commands
-            command_name = command_parts[0]
-            if os.path.isfile(command_name):
-                os.system(user_command)
+            executable = locate_executable(command)
+            if executable:
+                subprocess.run([executable, *args])
             else:
-                print(f"{user_command}: command not found")
-
+                print(f"{command}: command not found")
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     main()
