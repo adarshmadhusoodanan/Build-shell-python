@@ -1,55 +1,55 @@
 import sys
 import os
 
-builtin = ["echo","type", "exit"]
 
-
-def handle_input(user_command):
-
-    if "type" == user_command.split(" ")[0]:
-        if user_command.split(" ")[1] in builtin:
-            second_word = user_command.split(" ")[1]
-            sys.stdout.write(f"{second_word} is a shell builtin\n")
-        else:
-            # sys.stdout.write(f"{user_command.split(" ")[1]} not found\n")
-            paths = os.getenv("PATH").split(":")
-
-            for path in paths:
-                second_word = user_command.split(" ")[1]
-                if os.path.exists(f"{path}/{second_word}"):
-                    second_word = user_command.split(" ")[1]
-                    sys.stdout.write(f"{second_word} is {path}/{second_word}\n")
-                    break
-            else:
-                second_word = user_command.split(" ")[1]
-                sys.stdout.write(f"{second_word}: not found\n")
-    elif user_command == "exit 0":
-        return False
-    elif "echo" == user_command.split(" ")[0]:
-        invalid = user_command[len("echo "):]
-        sys.stdout.write(f"{invalid}\n")
-    else:
-        sys.stderr.write(f"{user_command}: command not found\n")
-        sys.stdout.flush()
-
+def find_path(param):
+    path = os.environ['PATH']
+    for directory in path.split(":"):
+        for (dirpath, dirnames, filenames) in os.walk(directory):
+            if param in filenames:
+                return f"{dirpath}/{param}"
+    return None
 
 
 def main():
-    # Uncomment this block to pass the first stag
-    
-
     while True:
         sys.stdout.write("$ ")
         sys.stdout.flush()
-        # Wait for user input
-        user_command = input()
-        handle_response = handle_input(user_command)
 
-        if handle_response == False:
-            break
-        
-        
-            
+        # Wait for user input
+        user_command = input().strip()
+        if not user_command:
+            continue
+
+        # Split the command into parts
+        command_parts = user_command.split(" ")
+
+        # Check for specific commands
+        if command_parts[0] == "exit" and len(command_parts) > 1 and command_parts[1] == "0":
+            exit(0)
+        elif command_parts[0] == "echo":
+            print(" ".join(command_parts[1:]))
+        elif command_parts[0] == "type":
+            if len(command_parts) > 1:
+                cmd = command_parts[1]
+                if cmd in ["echo", "type", "exit"]:
+                    print(f"{cmd} is a shell builtin")
+                else:
+                    location = find_path(cmd)
+                    if location:
+                        print(f"{cmd} is {location}")
+                    else:
+                        print(f"{cmd} not found")
+            else:
+                print("type: missing argument")
+        else:
+            # Default behavior for unknown commands
+            command_name = command_parts[0]
+            if os.path.isfile(command_name):
+                os.system(user_command)
+            else:
+                print(f"{user_command}: command not found")
+
 
 if __name__ == "__main__":
     main()
