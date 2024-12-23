@@ -1,53 +1,67 @@
 import os
-import subprocess
 import sys
-from typing import Optional
+import shlex
+import subprocess
 
-def locate_executable(command) -> Optional[str]:
-    path = os.environ.get("PATH", "")
-    for directory in path.split(":"):
-        file_path = os.path.join(directory, command)
-        if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
-            return file_path
-
-def handle_exit(args):
-    sys.exit(int(args[0]) if args else 0)
-
-def handle_echo(args):
-    print(" ".join(args))
-
-def handle_type(args):
-    if args[0] in builtins:
-        print(f"{args[0]} is a shell builtin")
-    else:
-        executable = locate_executable(args[0])
-        if executable:
-            print(f"{args[0]} is {executable}")
-        else:
-            print(f"{args[0]}: not found")
-
-builtins = {
-    "exit": handle_exit,
-    "echo": handle_echo,
-    "type": handle_type,
-}
+def findExecutable(command):
+    paths = os.getenv("PATH", "").split(os.pathsep)
+    for path in paths:
+        executablePath = os.path.join(path, command)
+        if os.path.isfile(executablePath):
+            return executablePath
+    return None
 
 def main():
     while True:
         sys.stdout.write("$ ")
-        sys.stdout.flush()
-        command, *args = input().split(" ")
-
-        if command in builtins:
-            builtins[command](args)
-            continue
+        command = input()
+        if command == "exit 0":
+            sys.exit(0)
+        elif command == "pwd":
+            print(os.getcwd())
+        elif command.startswith("cd"):
+            args = command.split(" ")
+            if len(args) > 1:
+                paths = args[1].strip()
+            else:
+                os.path.expanduser("~")
+            # handle `~` character.
+            if paths.startswith("~"):
+                paths = os.path.expanduser(paths)
+            try:
+                os.chdir(paths)
+            except Exception:
+                print(f"cd: {paths}: No such file or directory")
+        elif command.startswith("echo"):
+            # print(command[5:])
+            if command.startswith("'") and command.endswith("'"):
+                message = command[6:-1]
+                print(message)
+            else:
+                parts = shlex.split(command[5:])
+                print(" ".join(parts))
+            # print(command[5:])
+        elif command.startswith("type"):
+            seriesCommand = command.split(" ")
+            builtinCommand = seriesCommand[1]
+            if builtinCommand in ("echo", "exit", "type", "pwd", "cd"):
+                print(f"{builtinCommand} is a shell builtin")
+            else:
+                executablePath = findExecutable(builtinCommand)
+                if executablePath:
+                    print(f"{builtinCommand} is {executablePath}")
+                else:
+                    print(f"{builtinCommand}: not found")
         else:
-            executable = locate_executable(command)
-            if executable:
-                subprocess.run([executable, *args])
+            # splitCommand = command.split(" ")
+            # executablePath = findExecutable(splitCommand[0])
+            args = shlex.split(command)
+            executablePath = findExecutable(args[0])
+            if executablePath:
+                # result = subprocess.run(splitCommand, capture_output=True, text=True)
+                result = subprocess.run(args, capture_output=True, text=True)
+                print(result.stdout, end="")
             else:
                 print(f"{command}: command not found")
-        sys.stdout.flush()
-
 if __name__ == "__main__":
     main()
