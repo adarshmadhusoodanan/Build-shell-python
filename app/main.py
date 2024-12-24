@@ -46,7 +46,7 @@ def main():
                             found = True
                             break
                     if not found:
-                        print(f"{cmd_to_check}: not found")
+                        print(f"{cmd_to_check}: command not found")
             # Handle `pwd` command
             elif cmd == "pwd":
                 print(os.getcwd())
@@ -94,7 +94,7 @@ def main():
                             print(f"Error running {cmd}: {e}")
                         break
                 if not found:
-                    print(f"{cmd}: not found")
+                    print(f"{cmd}: command not found")
         except EOFError:
             # Handle Ctrl+D (EOF)
             sys.exit(0)
