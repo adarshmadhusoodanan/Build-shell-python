@@ -66,12 +66,12 @@ def normalise_args(user_input) -> list[str]:
                 res.append(arg)
             arg = ""
             i += 1
-        elif user_input[i] == "\\":
+        elif user_input[i] == "\":
             i += 1
         else:
             arg = ""
             while i < len(user_input) and user_input[i] != " ":
-                if user_input[i] == "\":
+                if user_input[i] == "\\":
                     arg += user_input[i + 1]
                     i += 2
                 else:
