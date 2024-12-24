@@ -88,19 +88,27 @@ def normalise_args(user_input) -> list[str]:
     return res
 
 
+def handle_echo(args):
+    output = " ".join(args)
+    processed_output = output.encode('utf-8').decode('unicode_escape')
+    print(processed_output)
+
+
 def main():
     cur_dir = os.getcwd()
     while True:
         sys.stdout.write("$ ")
         sys.stdout.flush()
         user_input = input()
+        if not user_input.strip():
+            continue
         args = normalise_args(user_input)
         cmd, args = args[0], args[1:]
         if cmd == "exit":
-            if args[0] == "0":
+            if args and args[0] == "0":
                 break
         elif cmd == "echo":
-            print(" ".join(args))
+            handle_echo(args)
         elif cmd == "type":
             handle_type(args)
         elif cmd == "pwd":
@@ -114,5 +122,6 @@ def main():
                 print(res.stdout.decode().rstrip())
                 continue
             print(f"{user_input}: command not found")
+
 if __name__ == "__main__":
     main()
