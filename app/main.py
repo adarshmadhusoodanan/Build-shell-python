@@ -49,7 +49,12 @@ def normalise_args(user_input) -> list[str]:
             while i < len(user_input):
                 if user_input[i] == "\\":
                     if user_input[i + 1] in ["\\", "$", '"', "\n"]:
-                        arg += user_input[i + 1]
+                        if user_input[i + 1] == "n":
+                            arg += "\n"  # Handle newline escape
+                        elif user_input[i + 1] == "t":
+                            arg += "\t"  # Handle tab escape
+                        else:
+                            arg += user_input[i + 1]
                         i += 2
                     else:
                         arg += user_input[i]
@@ -66,7 +71,7 @@ def normalise_args(user_input) -> list[str]:
                 res.append(arg)
             arg = ""
             i += 1
-        elif user_input[i] == "\":
+        elif user_input[i] == "\\":
             i += 1
         else:
             arg = ""
@@ -82,24 +87,6 @@ def normalise_args(user_input) -> list[str]:
         res.append(arg)
     return res
 
-def cd_cmd(args, cur_dir) -> str:
-    path = args[0]
-    new_dir = cur_dir
-    if path.startswith("/"):
-        new_dir = path
-    else:
-        for p in filter(None, path.split("/")):
-            if p == "..":
-                new_dir = new_dir.rsplit("/", 1)[0]
-            elif p == "~":
-                new_dir = os.environ["HOME"]
-            elif p != ".":
-                new_dir += f"/{p}"
-    if not os.path.exists(new_dir):
-        print(f"cd: {path}: No such file or directory")
-        return cur_dir
-    else:
-        return new_dir
 
 def main():
     cur_dir = os.getcwd()
