@@ -46,7 +46,7 @@ def main():
                             found = True
                             break
                     if not found:
-                        print(f"{cmd_to_check}: command not found")
+                        print(f"{cmd_to_check}: not found")
             # Handle `pwd` command
             elif cmd == "pwd":
                 print(os.getcwd())
