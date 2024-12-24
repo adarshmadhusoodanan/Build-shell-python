@@ -89,8 +89,11 @@ def normalise_args(user_input) -> list[str]:
 
 
 def handle_echo(args):
+    # Join the arguments into a single string
     output = " ".join(args)
+    # Process escape sequences
     processed_output = output.encode('utf-8').decode('unicode_escape')
+    # Print the processed string
     print(processed_output)
 
 
