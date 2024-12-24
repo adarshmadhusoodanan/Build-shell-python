@@ -1,102 +1,106 @@
-import sys
 import os
 import subprocess
-import shlex  # For parsing quoted strings
+import sys
+from typing import Optional
+def locate_executable(cmd) -> Optional[str]:
+    path = os.environ.get("PATH", "")
+    for directory in path.split(":"):
+        file_path = os.path.join(directory, cmd)
+        if os.path.isfile(file_path) and os.access(file_path, os.X_OK):
+            return file_path
+def parse_command(input_line: str):
+    def tokenize(line):
+        token = []
+        in_single_quotes = False
+        in_double_quotes = False
+        escape_next = False
+        for char in line:
+            # if char == "'" and not in_double_quotes:
+            if escape_next:
+                token.append(char)
+                escape_next = False
+                continue
+            elif char == "\\":
+                if in_single_quotes or in_double_quotes:
+                    token.append(char)
+                else:
+                    escape_next = True
+                continue
+            elif char == "'" and not in_double_quotes:
+                in_single_quotes = not in_single_quotes
+            elif char == '"' and not in_single_quotes:
+                in_double_quotes = not in_double_quotes
+            elif char == " " and not in_single_quotes and not in_double_quotes:
+                if token:
+                    yield "".join(token)
+                    token = []
+            else:
+                token.append(char)
+        if token:
+            yield "".join(token)
+    return list(tokenize(input_line))
+def handle_exit(args):
+    sys.exit(int(args[0]) if args else 0)
+def handle_echo(args):
+    print(" ".join(args))
+def handle_type(args):
+    if args[0] in builtins:
+        print(f"{args[0]} is a shell builtin")
+    else:
+        executable = locate_executable(args[0])
+        if executable:
+            print(f"{args[0]} is {executable}")
+        else:
+            print(f"{args[0]}: not found")
+def handle_pwd(args):
+    if args:
+        if args[0] == "pwd":
+            print("pwd is a shell builtin")
+        else:
+            print(f"pwd: invalid argument '{args[0]}'")
+    else:
+        print(os.getcwd())
+def handle_cd(args):
+    if len(args) != 1:
+        print("cd: too many arguments")
+        return
+    path = args[0]
+    if path.startswith("~"):
+        path = os.path.expanduser(path)
+    resolved_path = os.path.abspath(path)
+    try:
+        os.chdir(resolved_path)
+    except FileNotFoundError:
+        print(f"cd: {path}: No such file or directory")
+    except NotADirectoryError:
+        print(f"cd: {path}: Not a directory")
+    except PermissionError:
+        print(f"cd: {path}: Permission denied")
+builtins = {
+    "exit": handle_exit,
+    "echo": handle_echo,
+    "type": handle_type,
+    "pwd": handle_pwd,
+    "cd": handle_cd,
+}
 def main():
-    # Define the list of built-in commands
-    builtins = {"echo", "exit", "type", "pwd", "cd"}
     while True:
-        # Display the shell prompt
         sys.stdout.write("$ ")
         sys.stdout.flush()
-        try:
-            # Read user input
-            command = input().strip()
-            # # Parse input to handle quotes
-            # args = shlex.split(command)
-            # Parse input to handle quotes (both single and double)
-            args = shlex.split(command, posix=True)
-            if not args:
-                continue  # Skip empty commands
-            cmd = args[0]
-            # Handle `exit` command
-            if cmd == "exit":
-                if len(args) > 1 and args[1].isdigit():
-                    exit_code = int(args[1])
-                else:
-                    exit_code = 0
-                sys.exit(exit_code)
-            # Handle `type` command
-            elif cmd == "type":
-                if len(args) < 2:
-                    print("type: missing operand")
-                    continue
-                cmd_to_check = args[1]
-                if cmd_to_check in builtins:
-                    print(f"{cmd_to_check} is a shell builtin")
-                else:
-                    # Search for the command in the directories listed in PATH
-                    found = False
-                    for directory in os.environ["PATH"].split(":"):
-                        command_path = os.path.join(directory, cmd_to_check)
-                        if os.path.isfile(command_path) and os.access(
-                            command_path, os.X_OK
-                        ):
-                            print(f"{cmd_to_check} is {command_path}")
-                            found = True
-                            break
-                    if not found:
-                        print(f"{cmd_to_check}: not found")
-            # Handle `pwd` command
-            elif cmd == "pwd":
-                print(os.getcwd())
-            # Handle `cd` command (absolute, relative paths, and `~`)
-            elif cmd == "cd":
-                if len(args) < 2:
-                    target_dir = os.environ.get(
-                        "HOME", "/"
-                    )  # Default to home directory
-                else:
-                    target_dir = args[1]
-                # Handle `~` for home directory
-                if target_dir == "~":
-                    target_dir = os.environ.get("HOME", "/")
-                try:
-                    os.chdir(target_dir)  # Handles all valid paths
-                except FileNotFoundError:
-                    print(f"cd: {target_dir}: No such file or directory")
-                except PermissionError:
-                    print(f"cd: {target_dir}: Permission denied")
-            # Handle `echo` command
-            elif cmd == "echo":
-                # Join the arguments to preserve spacing within quotes
-                print(" ".join(args[1:]))
-            # Handle running external programs
+        input_line = input()
+        parsed_args = parse_command(input_line)
+        if not parsed_args:
+            continue
+        cmd, *args = parsed_args
+        if cmd in builtins:
+            builtins[cmd](args)
+            continue
+        else:
+            executable = locate_executable(cmd)
+            if executable:
+                subprocess.run([executable, *args])
             else:
-                # Search for the program in PATH
-                found = False
-                for directory in os.environ["PATH"].split(":"):
-                    program_path = os.path.join(directory, cmd)
-                    if os.path.isfile(program_path) and os.access(
-                        program_path, os.X_OK
-                    ):
-                        found = True
-                        try:
-                            # Run the program with its arguments
-                            result = subprocess.run(
-                                [program_path] + args[1:],
-                                capture_output=True,
-                                text=True,
-                            )
-                            # Print the program's output
-                            print(result.stdout.strip())
-                        except Exception as e:
-                            print(f"Error running {cmd}: {e}")
-                        break
-                if not found:
-                    print(f"{cmd}: command not found")
-        except EOFError:
-            # Handle Ctrl+D (EOF)
-            sys.exit(0)
+                print(f"{cmd}: command not found")
+        sys.stdout.flush()
 if __name__ == "__main__":
     main()
