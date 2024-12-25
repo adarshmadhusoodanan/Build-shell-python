@@ -1,132 +1,69 @@
-import os
-import subprocess
 import sys
-from typing import Optional
-
-
-BUILTINS = ["echo", "exit", "type", "pwd", "cd"]
-
-
-def present_on_path(command) -> Optional[str]:
-    path = os.environ.get("PATH")
-    if path:
-        dirs = path.split(":")
-        for dir in dirs:
-            full_path = os.path.join(dir, command)
-            if os.path.isfile(full_path):
-                return full_path
-    return None
-
-
-def handle_type(args):
-    if args[0] in BUILTINS:
-        print(f"{args[0]} is a shell builtin")
-        return
-    else:
-        full_path = present_on_path(args[0])
-        if full_path:
-            print(f"{args[0]} is {full_path}")
-            return
-    print(f"{args[0]}: not found")
-
-    
-def normalise_args(user_input) -> list[str]:
-    res = []
-    arg = ""
-    i = 0
-    while i < len(user_input):
-        if user_input[i] == "'":
-            i += 1
-            start = i
-            while i < len(user_input) and user_input[i] != "'":
-                i += 1
-            # res.append(user_input[start:i])
-            arg += user_input[start:i]
-            i += 1
-        elif user_input[i] == '"':
-            i += 1
-            # arg = ""
-            while i < len(user_input):
-                if user_input[i] == "\\":
-                    if user_input[i + 1] in ["\\", "$", '"', "\n"]:
-                        arg += user_input[i + 1]
-                        i += 2
-                    else:
-                        arg += user_input[i]
-                        i += 1
-                elif user_input[i] == '"':
-                    break
-                else:
-                    arg += user_input[i]
-                    i += 1
-            # res.append(arg)
-            i += 1
-        elif user_input[i] == " ":
-            if arg:
-                res.append(arg)
-            arg = ""
-            i += 1
-        elif user_input[i] == "\\":
-            i += 1
-        else:
-            # arg = ""
-            while i < len(user_input) and user_input[i] != " ":
-                if user_input[i] == "\\":
-                    arg += user_input[i + 1]
-                    i += 2
-                else:
-                    arg += user_input[i]
-                    i += 1
-            # res.append(arg)
-    if arg:
-        res.append(arg)
-    return res
-
-def cd_cmd(args, cur_dir) -> str:
-    path = args[0]
-    new_dir = cur_dir
-    if path.startswith("/"):
-        new_dir = path
-    else:
-        for p in filter(None, path.split("/")):
-            if p == "..":
-                new_dir = new_dir.rsplit("/", 1)[0]
-            elif p == "~":
-                new_dir = os.environ["HOME"]
-            elif p != ".":
-                new_dir += f"/{p}"
-    if not os.path.exists(new_dir):
-        print(f"cd: {path}: No such file or directory")
-        return cur_dir
-    else:
-        return new_dir
-
+import os
+import shlex
 def main():
-    cur_dir = os.getcwd()
     while True:
         sys.stdout.write("$ ")
-        sys.stdout.flush()
-        user_input = input()
-        args = normalise_args(user_input)
-        cmd, args = args[0], args[1:]
-        if cmd == "exit":
-            if args[0] == "0":
-                break
-        elif cmd == "echo":
-            print(" ".join(args))
-        elif cmd == "type":
-            handle_type(args)
-        elif cmd == "pwd":
-            print(cur_dir)
-        elif cmd == "cd":
-            cur_dir = cd_cmd(args, cur_dir)
+        command = input()
+        paths = os.getenv("PATH").split(":")
+        if command == "exit 0":
+            break
+        elif command == "pwd":
+            sys.stdout.write(f"{os.getcwd()}\n")
+        elif command.startswith("cat"):
+            command_list = shlex.split(command, posix=True)
+            for index in range(1, len(command_list)):
+                file_path = command_list[index]
+                file = open(file_path, "r")
+                sys.stdout.write(f"{file.read()}")
+                file.close()
+        elif command.startswith('"') or command.startswith("'"):
+            command_list = shlex.split(command, posix=True)
+            file_path = command_list[1]
+            file = open(file_path, "r")
+            sys.stdout.write(f"{file.read()}")
+            file.close()
+        elif command.startswith("cd"):
+            command_list = command.split()
+            cd_command_path = command_list[1]
+            try:
+                if cd_command_path.startswith("."):
+                    cd_command_path = os.path.normpath(
+                        os.path.join(os.getcwd(), cd_command_path)
+                    )
+                elif cd_command_path.startswith("~"):
+                    cd_command_path = os.getenv("HOME")
+                os.chdir(cd_command_path)
+            except FileNotFoundError:
+                sys.stdout.write(f"cd: {cd_command_path}: No such file or directory\n")
+        elif command.startswith("echo"):
+            command_list = shlex.split(command, posix=True)
+            sys.stdout.write(f"{" ".join(command_list[1:])}\n")
+        elif command.startswith("type"):
+            command_list = command.split()
+            type_command = command_list[1]
+            valid_type_commands = ["echo", "exit", "type", "pwd", "cd"]
+            if type_command in valid_type_commands:
+                sys.stdout.write(f"{type_command} is a shell builtin\n")
+            else:
+                is_command_path_exists = False
+                for path in paths:
+                    if os.path.exists(f"{path}/{type_command}"):
+                        sys.stdout.write(f"{type_command} is {path}/{type_command}\n")
+                        is_command_path_exists = True
+                        break
+                if is_command_path_exists == False:
+                    sys.stdout.write(f"{type_command}: not found\n")
         else:
-            full_path = present_on_path(cmd)
-            if full_path:
-                res = subprocess.run(args=([cmd] + args), capture_output=True)
-                print(res.stdout.decode().rstrip())
-                continue
-            print(f"{user_input}: command not found")
-            
+            command_list = command.split()
+            executable_command = command_list[0]
+            is_command_path_exists = False
+            for path in paths:
+                if os.path.exists(f"{path}/{executable_command}"):
+                    os.system(f"{path}/{command}")
+                    is_command_path_exists = True
+                    break
+            if is_command_path_exists == False:
+                sys.stdout.write(f"{executable_command}: command not found\n")
 if __name__ == "__main__":
     main()
