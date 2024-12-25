@@ -40,21 +40,16 @@ def normalise_args(user_input) -> list[str]:
             start = i
             while i < len(user_input) and user_input[i] != "'":
                 i += 1
-            res.append(user_input[start:i])
+            # res.append(user_input[start:i])
             arg += user_input[start:i]
             i += 1
         elif user_input[i] == '"':
             i += 1
-            arg = ""
+            # arg = ""
             while i < len(user_input):
                 if user_input[i] == "\\":
                     if user_input[i + 1] in ["\\", "$", '"', "\n"]:
-                        if user_input[i + 1] == "n":
-                            arg += "\n"  # Handle newline escape
-                        elif user_input[i + 1] == "t":
-                            arg += "\t"  # Handle tab escape
-                        else:
-                            arg += user_input[i + 1]
+                        arg += user_input[i + 1]
                         i += 2
                     else:
                         arg += user_input[i]
@@ -64,7 +59,7 @@ def normalise_args(user_input) -> list[str]:
                 else:
                     arg += user_input[i]
                     i += 1
-            res.append(arg)
+            # res.append(arg)
             i += 1
         elif user_input[i] == " ":
             if arg:
@@ -74,7 +69,7 @@ def normalise_args(user_input) -> list[str]:
         elif user_input[i] == "\\":
             i += 1
         else:
-            arg = ""
+            # arg = ""
             while i < len(user_input) and user_input[i] != " ":
                 if user_input[i] == "\\":
                     arg += user_input[i + 1]
@@ -82,20 +77,29 @@ def normalise_args(user_input) -> list[str]:
                 else:
                     arg += user_input[i]
                     i += 1
-            res.append(arg)
+            # res.append(arg)
     if arg:
         res.append(arg)
     return res
 
-
-def handle_echo(args):
-    # Join the arguments into a single string
-    output = " ".join(args)
-    # Process escape sequences
-    processed_output = output.encode('utf-8').decode('unicode_escape')
-    # Print the processed string
-    print(processed_output)
-
+def cd_cmd(args, cur_dir) -> str:
+    path = args[0]
+    new_dir = cur_dir
+    if path.startswith("/"):
+        new_dir = path
+    else:
+        for p in filter(None, path.split("/")):
+            if p == "..":
+                new_dir = new_dir.rsplit("/", 1)[0]
+            elif p == "~":
+                new_dir = os.environ["HOME"]
+            elif p != ".":
+                new_dir += f"/{p}"
+    if not os.path.exists(new_dir):
+        print(f"cd: {path}: No such file or directory")
+        return cur_dir
+    else:
+        return new_dir
 
 def main():
     cur_dir = os.getcwd()
@@ -103,15 +107,13 @@ def main():
         sys.stdout.write("$ ")
         sys.stdout.flush()
         user_input = input()
-        if not user_input.strip():
-            continue
         args = normalise_args(user_input)
         cmd, args = args[0], args[1:]
         if cmd == "exit":
-            if args and args[0] == "0":
+            if args[0] == "0":
                 break
         elif cmd == "echo":
-            handle_echo(args)
+            print(" ".join(args))
         elif cmd == "type":
             handle_type(args)
         elif cmd == "pwd":
@@ -125,6 +127,6 @@ def main():
                 print(res.stdout.decode().rstrip())
                 continue
             print(f"{user_input}: command not found")
-
+            
 if __name__ == "__main__":
     main()
