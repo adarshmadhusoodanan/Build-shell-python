@@ -1,69 +1,109 @@
 import sys
 import os
-import shlex
-def main():
-    while True:
-        sys.stdout.write("$ ")
-        command = input()
-        paths = os.getenv("PATH").split(":")
-        if command == "exit 0":
-            break
-        elif command == "pwd":
-            sys.stdout.write(f"{os.getcwd()}\n")
-        elif command.startswith("cat"):
-            command_list = shlex.split(command, posix=True)
-            for index in range(1, len(command_list)):
-                file_path = command_list[index]
-                file = open(file_path, "r")
-                sys.stdout.write(f"{file.read()}")
-                file.close()
-        elif command.startswith('"') or command.startswith("'"):
-            command_list = shlex.split(command, posix=True)
-            file_path = command_list[1]
-            file = open(file_path, "r")
-            sys.stdout.write(f"{file.read()}")
-            file.close()
-        elif command.startswith("cd"):
-            command_list = command.split()
-            cd_command_path = command_list[1]
-            try:
-                if cd_command_path.startswith("."):
-                    cd_command_path = os.path.normpath(
-                        os.path.join(os.getcwd(), cd_command_path)
-                    )
-                elif cd_command_path.startswith("~"):
-                    cd_command_path = os.getenv("HOME")
-                os.chdir(cd_command_path)
-            except FileNotFoundError:
-                sys.stdout.write(f"cd: {cd_command_path}: No such file or directory\n")
-        elif command.startswith("echo"):
-            command_list = shlex.split(command, posix=True)
-            sys.stdout.write(f"{" ".join(command_list[1:])}\n")
-        elif command.startswith("type"):
-            command_list = command.split()
-            type_command = command_list[1]
-            valid_type_commands = ["echo", "exit", "type", "pwd", "cd"]
-            if type_command in valid_type_commands:
-                sys.stdout.write(f"{type_command} is a shell builtin\n")
+import subprocess
+
+def mysplit(input):
+    res = [""]
+    current_quote = ""
+    i = 0
+    while i < len(input):
+        c = input[i]
+        if c == "\\":
+            ch = input[i + 1]
+            if current_quote == "'":
+                res[-1] += c
+            elif current_quote == '"':
+                ch = input[i + 1]
+                if ch in ["\\", "$", '"', "\n"]:
+                    res[-1] += ch
+                else:
+                    res[-1] += "\\" + ch
+                i += 1
             else:
-                is_command_path_exists = False
-                for path in paths:
-                    if os.path.exists(f"{path}/{type_command}"):
-                        sys.stdout.write(f"{type_command} is {path}/{type_command}\n")
-                        is_command_path_exists = True
-                        break
-                if is_command_path_exists == False:
-                    sys.stdout.write(f"{type_command}: not found\n")
+                res[-1] += input[i + 1]
+                i += 1
+        elif c in ['"', "'"]:
+            if current_quote == "":
+                current_quote = c
+            elif current_quote == c:
+                current_quote = ""
+            else:
+                res[-1] += c
+        elif c == " " and current_quote == "":
+            if res[-1] != "":
+                res.append("")
         else:
-            command_list = command.split()
-            executable_command = command_list[0]
-            is_command_path_exists = False
-            for path in paths:
-                if os.path.exists(f"{path}/{executable_command}"):
-                    os.system(f"{path}/{command}")
-                    is_command_path_exists = True
-                    break
-            if is_command_path_exists == False:
-                sys.stdout.write(f"{executable_command}: command not found\n")
+            res[-1] += c
+        i += 1
+    if res[-1] == "":
+        res.pop()
+    return res
+
+def get_user_command():
+    sys.stdout.write("$ ")
+    out, err = sys.stdout, sys.stderr
+    inp = mysplit(input())
+    if "1>" in inp:
+        idx = inp.index("1>")
+        inp, out = inp[:idx], inp[idx + 1]
+    elif ">" in inp:
+        idx = inp.index(">")
+        inp, out = inp[:idx], inp[idx + 1]
+    return inp, out, err
+
+def get_file(dirs, filename):
+    for dir in dirs:
+        filepath = f"{dir}/{filename}"
+        if os.path.isfile(filepath):
+            return filepath
+    return None
+
+def handle_command(inp, dirs, HOME, out, err):
+    toCloseOut = False
+    if type(out) is str:
+        toCloseOut = True
+        out = open(out, "w+")
+    if len(inp) == 2 and inp[0] == "exit" and inp[1] == "0":
+        sys.exit(0)
+    elif inp[0] == "echo":
+        out.write(" ".join(inp[1:]) + "\n")
+    elif len(inp) == 2 and inp[0] == "type":
+        arg = inp[1]
+        if arg in ["type", "exit", "echo", "pwd", "cd"]:
+            out.write(f"{arg} is a shell builtin\n")
+        else:
+            filepath = get_file(dirs, arg)
+            if filepath:
+                out.write(f"{arg} is {filepath}\n")
+            else:
+                out.write(f"{arg}: not found\n")
+    elif inp[0] == "pwd":
+        out.write(f"{os.getcwd()}\n")
+    elif len(inp) == 2 and inp[0] == "cd":
+        path = inp[1]
+        if path == "~":
+            os.chdir(HOME)
+        elif os.path.isdir(path):
+            os.chdir(path)
+        else:
+            err.write(f"cd: {path}: No such file or directory\n")
+    else:
+        file = inp[0]
+        filepath = get_file(dirs, file)
+        if filepath:
+            subprocess.run([filepath, *inp[1:]], stdout=out, stderr=err)
+        else:
+            err.write(f"{' '.join(inp)}: command not found\n")
+    if toCloseOut:
+        out.close()
+
+def main(dirs, HOME):
+    while True:
+        inp, out, err = get_user_command()
+        handle_command(inp, dirs, HOME, out, err)
+
 if __name__ == "__main__":
-    main()
+    PATH = os.environ.get("PATH")
+    dirs = PATH.split(":")
+    HOME = os.environ.get("HOME")
+    main(dirs, HOME)
