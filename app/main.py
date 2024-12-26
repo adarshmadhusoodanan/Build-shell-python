@@ -71,6 +71,7 @@ def normalise_args(user_input) -> list[str]:
     if arg:
         res.append(arg)
     return res
+
 def cd_cmd(args, cur_dir) -> tuple[str, str]:
     path = args[0]
     new_dir = cur_dir
@@ -88,6 +89,8 @@ def cd_cmd(args, cur_dir) -> tuple[str, str]:
         return (cur_dir, f"cd: {path}: No such file or directory")
     else:
         return (new_dir, "")
+
+
 def main():
     cur_dir = os.getcwd()
     while True:
@@ -146,5 +149,7 @@ def main():
             stdout.close()
         if stderr is not sys.stderr:
             stderr.close()
+
+            
 if __name__ == "__main__":
     main()
