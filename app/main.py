@@ -1,183 +1,191 @@
-import os
 import sys
-import subprocess as sbp
-from pathlib import Path
+import os
+import subprocess
+import shlex
 
-PATH = os.environ.get("PATH")
 
-def is_exe(exe_name):
-    if PATH:
-        for path in PATH.split(":"):
-            if Path(path).is_dir():
-                for p in Path(path).iterdir():
-                    if p.parts[-1] == exe_name.strip():
-                        return (True, p)
-    return (False, None)
+BUILTIN_COMMANDS = {"exit", "echo", "type", "pwd", "cd"}
 
-def custom_string_split(string):
-    strings = []
-    buffer = []
-    i = 0
-    n = len(string)
-    while i < n:
-        if string[i] == "\\":
-            if i < n:
-                i += 1
-                buffer.append(string[i])
-        elif string[i] == "'":
-            temp = i
-            i += 1
-            while i < n and string[i] != "'":
-                i += 1
-            if i == n:
-                i = temp
-                buffer.append(string[i])
-            else:
-                buffer.extend(string[temp + 1 : i])
-        elif string[i] == '"':
-            temp = i
-            i += 1
-            while i < n:
-                if string[i] == "\\":
-                    if string[i + 1] == '"':
-                        i += 2
-                        continue
-                    elif string[i + 1] == "\\":
-                        i += 2
-                        continue
-                elif string[i] == '"':
+def check_path(command_name):
+    paths = os.getenv("PATH", "").split(":")
+    for path in paths:
+        full_path = os.path.join(path, command_name)
+        if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+            return full_path
+    return None
+
+
+def parse_command_and_args(raw_args):
+    args = shlex.split(raw_args)
+    command = args[0] if args else ""
+    redirect_stdout = None
+    redirect_stderr = None
+    append_stdout = None  # For appending stdout
+    
+    if ">" in args or "1>" in args or "2>" in args or ">>" in args or "1>>" in args:
+        i = 0
+        while i < len(args):
+            if args[i] in {">", "1>"}:
+                if i + 1 < len(args):
+                    redirect_stdout = args[i + 1]
+                    del args[i : i + 2]
+                else:
                     break
-                i += 1
-            if i == n:
-                i = temp
-                buffer.append(string[i])
+            elif args[i] in {">>", "1>>"}:
+                if i + 1 < len(args):
+                    append_stdout = args[i + 1]
+                    del args[i : i + 2]
+                else:
+                    break
+            elif args[i] == "2>":
+                if i + 1 < len(args):
+                    redirect_stderr = args[i + 1]
+                    del args[i : i + 2]
+                else:
+                    break
             else:
-                buffer.extend(
-                    string[temp + 1 : i]
-                    .replace(r"\\n", r"\n")
-                    .replace(r'\"', r'"')
-                    .replace("\\\\", "\\")
-                )
-        elif string[i] == " ":
-            strings.append("".join(buffer))
-            buffer = []
+                i += 1
+    
+    return command, args[1:], redirect_stdout, redirect_stderr, append_stdout
+
+
+def handle_command(command, args, redirect_stdout, redirect_stderr, append_stdout):
+    if command == "exit":
+        execute_exit(args)
+    elif command == "echo":
+        execute_echo(args, redirect_stdout, redirect_stderr, append_stdout)
+    elif command == "pwd":
+        execute_pwd(redirect_stdout, redirect_stderr, append_stdout)
+    elif command == "cd":
+        execute_cd(args)
+    elif command == "type":
+        execute_type(args, redirect_stdout, redirect_stderr)
+    else:
+        execute_external_program(command, args, redirect_stdout, redirect_stderr, append_stdout)
+
+def write_output(
+    output,
+    redirect_stdout=None,
+    redirect_stderr=None,
+    append_stdout=None,
+    is_error=False,
+):
+    target = (
+        append_stdout
+        if append_stdout
+        else (redirect_stderr if is_error else redirect_stdout)
+    )
+    mode = "a" if append_stdout else "w"
+    if target:
+        try:
+    
+            with open(target, mode) as file:
+                file.write(output)
+        except IOError as e:
+            sys.stderr.write(f"Error writing to file {target}: {e}\n")
+    else:
+        if is_error:
+            sys.stderr.write(output)
         else:
-            buffer.append(string[i])
-        i += 1
-    if buffer:
-        strings.append("".join(buffer))
-        buffer = []
-    return list(filter(len, strings))
+            sys.stdout.write(output)
+def execute_exit(command):
+    status_code = int(command[0]) if command and command[0].isdigit() else 0
+    sys.exit(status_code)
+def execute_type(command, redirect_stdout=None, redirect_stderr=None):
+    output = []
+    if not command:
+        output.append("type: argument required\n")
+    else:
+        for name in command:
+            if name in BUILTIN_COMMANDS:
+                output.append(f"{name} is a shell builtin\n")
+            else:
+                path = check_path(name)
+                if path:
+                    output.append(f"{name} is {path}\n")
+                else:
+                    output.append(f"{name}: not found\n")
+    write_output("".join(output), redirect_stdout, redirect_stderr)
 
-def pwd():
-    return os.getcwd()
+def execute_echo(
+    command, redirect_stdout=None, redirect_stderr=None, append_stdout=None
+):
+    if redirect_stderr:
+        try:
+            with open(redirect_stderr, "a"):
+                pass
+        except IOError as e:
+            sys.stderr.write(f"Error creating file {redirect_stderr}: {e}\n")
+    if command:
+        
+        write_output(f"{' '.join(command)}\n", redirect_stdout, None, append_stdout)
 
-def change_dir(path):
-    if path == "~":
-        path = os.environ["HOME"]
-    os.chdir(path)
 
+def execute_external_program(
+    command, args, redirect_stdout, redirect_stderr, append_stdout=None
+):
+    executable_path = check_path(command)
+    if executable_path:
+        try:
+            with subprocess.Popen(
+                [executable_path, *args],
+                stdout=subprocess.PIPE if redirect_stdout or append_stdout else None,
+                stderr=subprocess.PIPE if redirect_stderr else None,
+                text=True,
+            ) as proc:
+                stdout, stderr = proc.communicate()
+                if stdout:
+                    
+                    write_output(
+                        stdout, redirect_stdout, redirect_stderr, append_stdout
+                    )
+                if stderr:
+                    
+                    write_output(
+                        stderr, redirect_stdout, redirect_stderr, is_error=True
+                    )
+        except FileNotFoundError:
+            sys.stderr.write(f"{command}: command not found\n")
+        except Exception as e:
+            sys.stderr.write(f"Error executing {command}: {e}\n")
+    else:
+        sys.stderr.write(f"{command}: command not found\n")
+
+def execute_pwd(redirect_stdout=None, redirect_stderr=None, append_stdout=None):
+    output = f"{os.getcwd()}\n"
+    write_output(output, redirect_stdout or append_stdout, redirect_stderr)
+def execute_cd(args):
+    if not args:
+        sys.stdout.write("cd: argument required\n")
+        return
+    directory = args[0]
+    if directory.startswith("~"):
+        directory = os.path.expanduser(directory)
+    try:
+        os.chdir(directory)
+    except FileNotFoundError:
+        sys.stdout.write(f"cd: {directory}: No such file or directory\n")
+    except PermissionError:
+        sys.stdout.write(f"cd: {directory}: Permission denied\n")
 def main():
-    builtin_commands = ["exit", "echo", "type", "pwd"]
     while True:
-        sys.stdout.write("$ ")
-        inp = input()
-        command = inp
-        argument_string = ""
-        argument_vec = []
-        splitted_inp = custom_string_split(inp)
-        redirect_fd = "1"
-        redirect_file = ""
-
-        if len(splitted_inp) > 0:
-            command = splitted_inp[0]
-
-        if len(splitted_inp) > 1:
-            for i, x in enumerate(splitted_inp[1:]):
-                if x == ">":
-                    if argument_vec and argument_vec[-1] in ("1", "2"):
-                        redirect_fd = argument_vec.pop()
-                    redirect_file = splitted_inp[i + 2]
-                    break
-                elif x == "1>":
-                    redirect_file = splitted_inp[i + 2]
-                    break
-                elif x == "2>":
-                    redirect_fd = "2"
-                    redirect_file = splitted_inp[i + 2]
-                    break
-                else:
-                    argument_vec.append(x)
-            argument_string = " ".join(argument_vec)
-
-        if command == "exit":
-            exit_code = int(argument_string.strip()) if argument_string.strip() else 0
-            sys.exit(exit_code)
-
-        elif command == "echo":
-            output = " ".join(argument_vec) + "\n"
-            error = ""
-
-            if redirect_file and redirect_fd == "1":
-                with open(redirect_file, "wb") as f:
-                    f.write(output.encode())
-            else:
-                sys.stdout.write(output)
-
-            if redirect_file and redirect_fd == "2":
-                with open(redirect_file, "wb") as f:
-                    f.write(error.encode())
-            else:
-                sys.stderr.write(error)
-
-        elif command == "type":
-            if argument_string in builtin_commands:
-                print(argument_string, "is a shell builtin")
-            else:
-                ret, exe_dir = is_exe(argument_string)
-                if ret:
-                    print(f"{argument_string} is {exe_dir}")
-                else:
-                    print(f"{argument_string}: not found")
-
-        elif command == "pwd":
-            print(pwd())
-
-        elif command == "cd":
-            path = argument_string
-            if path == "~":
-                path = os.environ["HOME"]
-            if Path(path).exists():
-                change_dir(path)
-            else:
-                print(f"cd: {path}: No such file or directory")
-
-        else:
-            ret, exe_dir = is_exe(command)
-            if ret:
-                arguments_list = [command]
-                if argument_vec:
-                    arguments_list.extend(argument_vec)
-
-                capture_output = True if redirect_file else False
-
-                cmp_process = sbp.run(
-                    arguments_list, shell=False, capture_output=capture_output
-                )
-
-                if redirect_file:
-                    if redirect_fd == "1":
-                        if cmp_process.stderr:
-                            sys.stderr.write(cmp_process.stderr.decode())
-                        with open(redirect_file, "wb") as f:
-                            f.write(cmp_process.stdout)
-                    elif redirect_fd == "2":
-                        if cmp_process.stdout:
-                            sys.stdout.write(cmp_process.stdout.decode())
-                        with open(redirect_file, "wb") as f:
-                            f.write(cmp_process.stderr)
-            else:
-                print(f"{inp}: command not found")
-
+        try:
+            sys.stdout.write("$ ")
+            sys.stdout.flush()
+            raw_command = input().strip()
+            if not raw_command:
+                continue
+       
+            command, args, redirect_stdout, redirect_stderr, append_stdout = (
+                parse_command_and_args(raw_command)
+            )
+            handle_command(
+                command, args, redirect_stdout, redirect_stderr, append_stdout
+            )
+           
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting...")
+            sys.exit(0)
 if __name__ == "__main__":
     main()
+
